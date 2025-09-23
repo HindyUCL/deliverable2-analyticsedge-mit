@@ -1,0 +1,172 @@
+---
+title: "Problem_1"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+  html_notebook: default
+header-includes:
+  - \usepackage{fvextra}
+  - \fvset{breaklines=true, breakanywhere=true} % wrap in all FancyVerb blocks
+  - \DefineVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere}
+---
+
+# Problem 1: Predicting healthcare charges, in USD, using a patient’s age and BMI as features
+
+```{r}
+library(readr)
+library(ggplot2)
+library(tidyverse)
+library(rpart) # this is what we use to make the decision tree
+library(rpart.plot)
+library(dplyr)
+```
+
+```{r}
+df <- read_csv("./insurance_charges.csv")
+head(df)
+summary(df)
+```
+Let us start with really basic exploratory data analysis to gain some understanding on our data. 
+```{r}
+# Distributions of the numeric columns
+df |>
+  select(where(is.numeric)) |>
+  pivot_longer(everything(), names_to = "var", values_to = "val") |>
+  ggplot(aes(val)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  facet_wrap(~ var, scales = "free") +
+  labs(title = "Distributions of numeric variables", x = NULL, y = "Count")
+```
+```{r}
+# Correlation matrix heatmap
+corr_mat <- cor(df |> select(where(is.numeric)), use = "pairwise.complete.obs")
+
+corr_mat |>
+  as.data.frame() |>
+  tibble::rownames_to_column("var1") |>
+  pivot_longer(-var1, names_to = "var2", values_to = "corr") |>
+  ggplot(aes(var1, var2, fill = corr)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.2f", corr)), size = 3) +
+  scale_fill_gradient2(limits = c(-1, 1)) +
+  labs(title = "Correlation heatmap", x = NULL, y = NULL) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+From the EDA, we can see that charges are right-skewed with a few high-cost outliers, while age is fairly uniform across the dataset. The correlation heatmap shows that BMI, f_bmi, and cardiovascular_care_cost are highly correlated with each other, but only moderately related to charges, suggesting potential multicollinearity among the BMI-related features.
+
+
+## a) 
+```{r}
+# Decision tree predicting charges based on bmi and age. 
+model1 <- rpart(charges ~ age, bmi, data = df)
+
+# Plots the decision tree
+rpart.plot(model1)
+
+# Returns a summary of the model 
+summary(model1)
+
+# R-squared ( from training data)
+pred <- predict(model1, df)
+rss <- sum((df$charges - pred)^2)                # residual sum of squares
+tss <- sum((df$charges - mean(df$charges))^2)   # total sum of squares
+rsq <- 1 - rss/tss
+
+cat("The Training R-squared is:", round(rsq, 3), "\n")
+```
+The R-squared obtained is equal to 8.8%, which is low and shows that the model has not learnt deeply the relationship we want to model. 
+
+## b) 
+
+```{r}
+# Decision tree predicting charges based on f_bmi and age. 
+model2 <- rpart(charges ~ age, f_bmi, data = df)
+
+# Plots the decision tree
+rpart.plot(model2)
+
+# Returns a summary of the model 
+summary(model2)
+
+# R-squared ( from training data)
+pred <- predict(model2, df)
+rss <- sum((df$charges - pred)^2)                # residual sum of squares
+tss <- sum((df$charges - mean(df$charges))^2)   # total sum of squares
+rsq <- 1 - rss/tss
+
+cat("The Training R-squared is:", round(rsq, 3), "\n")
+
+```
+We get a R-squared value fairly small (9%), which testifies that the model has not well learnt the training data and that perhaps, we need a more complex model.
+
+## c)
+
+From the trees' plots performed using rpart, we can see that the structures are exactly the same and the cutoffs are too (age < 43, and age < 59 were the variables chosen). Addtionally, the R-squared obtained from model1 and model2 are very close (9% and 8.8%, respectively). This hints on the high correlation between f_bmi and bmi. As we can see from the correlation heatmap of our EDA, the f_bmi and bmi features are almost perfectly correlated (Dark blue) with a coefficient of 0.98! On top of this, f_bmi as a function of bmi shows that f_bmi is a nonlinear transformation of bmi, likely a scaled or polynomial/log-type function that compresses larger BMI values, since the relationship is strongly positive but clearly curved rather than linear.
+
+```{r}
+# Plot f_bmi as a function of bmi
+plot(df$bmi, df$f_bmi,
+     xlab = "BMI",
+     ylab = "f_bmi",
+     main = "f_bmi as a function of BMI",
+     pch = 19, col = "steelblue")
+abline(lm(f_bmi ~ bmi, data = df), col = "red", lwd = 2)
+```
+## d) 
+
+## e) 
+
+Firstly, we should define clearly which dependent variables we would like to keep. We will not use bmi since it is highly correlated to f_bmi, as shown above. We will keep age, and add charges, since it is not a value we aim to predict anymore.  
+```{r}
+# Grid of cp values
+cps <- c(0, 0.02, 0.04, 0.06, 0.08, 0.1)
+
+# Fit tree at a given cp and compute training metrics
+fit_one <- function(cp) {
+  
+  fit <- rpart(cardiovascular_care_cost ~ age + f_bmi + charges,
+               data = df,
+               control = rpart.control(cp = cp))  # keep other defaults
+  
+  y <- df$cardiovascular_care_cost
+  pred <- predict(fit, df)
+  rss <- sum((y - pred)^2); tss <- sum((y - mean(y))^2)
+  r2  <- 1 - rss/tss
+  rmse <- sqrt(mean((y - pred)^2))
+  
+  leaves <- sum(fit$frame$var == "<leaf>")
+  
+  depth <- max(rpart:::tree.depth(as.numeric(row.names(fit$frame))))
+  
+  tibble(cp = cp, R2 = r2, RMSE = rmse, Leaves = leaves, Depth = depth, model = list(fit))
+}
+
+# Run fits
+res <- bind_rows(lapply(cps, fit_one))
+
+# Show summary table (metrics only)
+res %>% select(cp, R2, RMSE, Leaves, Depth)
+```
+
+```{r}
+# Plots how fit and complexity change with cp
+ggplot(res, aes(cp, R2)) + geom_line() + geom_point() +
+  labs(title = "Training R² vs cp", x = "cp", y = "R²")
+
+ggplot(res, aes(cp, Leaves)) + geom_line() + geom_point() +
+  labs(title = "Tree size vs cp", x = "cp", y = "Number of leaves")
+```
+```{r}
+# Plot each tree (one after another)
+for (i in seq_len(nrow(res))) {
+  cat("\n\n## cp =", res$cp[i], "\n")
+  rpart.plot(res$model[[i]],
+             main = paste0("CART: cardiovascular_care_cost (cp = ", res$cp[i], ")"))
+}
+```
+When cp = 0, the tree grows very deep (12 levels, 111 leaves), leading to extremely high training R² (≈0.95) but clear overfitting, as seen in the highly complex structure. Increasing cp prunes the tree aggressively: at cp = 0.02, the tree shrinks to just 6 leaves and R² drops to ≈0.89. For cp = 0.04–0.08, the tree stabilizes with 4 leaves and depth 2, achieving R² around 0.83, which indicates a simpler but still reasonable fit. Finally, at cp = 0.10, the tree becomes even smaller (3 leaves, depth 2) and the R² falls further to ≈0.73, showing underfitting.
+
+In summary, smaller cp values allow more complex trees with higher apparent training accuracy but risk overfitting, while larger cp values lead to simpler trees with reduced variance but higher bias. This trade-off highlights the importance of tuning cp to balance model complexity and predictive power, based on needs for expanability (e.g. Shallow tree is preferred as it can be visualized and human-parsed quickly) or performance, for instance. 
+
