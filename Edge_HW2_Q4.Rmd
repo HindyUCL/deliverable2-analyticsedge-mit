@@ -1,0 +1,166 @@
+---
+title: "Edge_HW2_Q4"
+output: pdf_document
+date: "2025-09-24"
+---
+
+```{r}
+library(olsrr)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(randomForest)
+
+set.seed(15072)
+
+df = read.csv("ames.csv")
+
+df$._bin <- cut(df$SalePrice, breaks = quantile(df$SalePrice, probs = seq(0,1,0.1), na.rm = TRUE),
+                include.lowest = TRUE)
+idx <- createDataPartition(df$._bin, p = 0.7, list = FALSE)
+
+df_train <- subset(df, select = -._bin)[idx, ]
+df_test  <- subset(df, select = -._bin)[-idx, ]
+
+R2 <- function(y, yhat) 1 - sum((y - yhat)^2) / sum((y - mean(y))^2)
+```
+
+> (A)
+
+```{r}
+mod_linear_initial <- lm(SalePrice ~ ., data = df_train)
+mod_linear_olsrr   <- ols_step_backward_p(mod_linear_initial, p_val = 0.05, progress = TRUE)
+mod_linear_final   <- mod_linear_olsrr$model
+summary(mod_linear_final)
+
+```
+
+```{r}
+pred_train_lm <- predict(mod_linear_final, newdata = df_train)
+pred_test_lm  <- predict(mod_linear_final, newdata = df_test)
+
+r2_lm_in  <- R2(df_train$SalePrice, pred_train_lm)
+r2_lm_out <- R2(df_test$SalePrice,  pred_test_lm)
+
+cat(sprintf("\n(a) Linear (OLSRR): R^2_in = %.4f | R^2_out = %.4f\n", r2_lm_in, r2_lm_out))
+
+```
+
+> (B)
+
+```{r}
+cart_default <- rpart(SalePrice ~ ., data = df_train)
+rpart.plot(cart_default, type = 2, extra = 101, under = TRUE,
+           main = "CART (default) — Ames")
+
+pred_train_cart0 <- predict(cart_default, newdata = df_train)
+pred_test_cart0  <- predict(cart_default,  newdata = df_test)
+
+r2_cart0_in  <- R2(df_train$SalePrice, pred_train_cart0)
+r2_cart0_out <- R2(df_test$SalePrice,  pred_test_cart0)
+
+cat(sprintf("\n(b) CART (default): R^2_in = %.4f | R^2_out = %.4f\n", r2_cart0_in, r2_cart0_out))
+
+```
+
+```{r}
+imp_cart0 <- cart_default$variable.importance
+if (!is.null(imp_cart0)) {
+  cat("\nTop variables in CART (default):\n")
+  print(sort(imp_cart0, decreasing = TRUE)[1:min(10, length(imp_cart0))])
+}
+```
+
+> (C)
+
+> Variable CentralAir was already removed in our earlier model since it wasn't statistically significant. However we check it again now without eliminating non-significant variables. 
+
+```{r}
+
+df_train$CentralAir <- relevel(df_train$CentralAir, ref = "No")
+df_test$CentralAir  <- relevel(df_test$CentralAir,  ref = "No")
+
+mod_with    <- lm(SalePrice ~ CentralAir + ., data = df_train)
+mod_without <- update(mod_with, . ~ . - CentralAir)
+
+# F-test for incremental value of CentralAir
+print(anova(mod_without, mod_with))
+
+# Coefficient-based uplift (ceteris paribus)
+if ("CentralAirYes" %in% rownames(coef(summary(mod_with)))) {
+  coef_ca <- coef(summary(mod_with))["CentralAirYes","Estimate"]
+  cat(sprintf("Linear model uplift (coef on CentralAirYes): $%.0f\n", coef_ca))
+}
+
+```
+
+> Linear regression (OLSRR + forced test): Installing central air is not worth it. The model suggests it only increases value by about $1.8k, and the effect is not statistically significant.
+
+> Now, we check the CART model's results.
+
+```{r}
+library(rpart)
+
+# Make sure CentralAir is a factor with levels No/Yes
+df_train$CentralAir <- factor(df_train$CentralAir, levels = c("No","Yes"))
+df_test$CentralAir  <- factor(df_test$CentralAir,  levels = c("No","Yes"))
+
+# Fit CART
+cart_c <- rpart(SalePrice ~ ., data = df_train, method = "anova")
+
+# Create counterfactual test sets
+test_yes <- df_test; test_yes$CentralAir <- factor("Yes", levels = c("No","Yes"))
+test_no  <- df_test; test_no$CentralAir  <- factor("No",  levels = c("No","Yes"))
+
+# Predict
+pred_yes <- predict(cart_c, newdata = test_yes)
+pred_no  <- predict(cart_c, newdata = test_no)
+
+# Average uplift
+uplift_cart <- mean(pred_yes - pred_no, na.rm = TRUE)
+
+cat(sprintf("CART predicted average uplift of CentralAir: $%.0f\n\n", uplift_cart))
+
+cart_c$variable.importance
+
+```
+> The CART model’s average uplift for CentralAir is essentially zero, and the variable does not appear among the top importances. This indicates that once other features are considered, the model attributes little to no additional value to installing central air.
+
+> Both the linear regression and CART models suggest that installing central air would not be a profitable investment.
+Linear regression: when we forced CentralAir into the model, the estimated uplift was only about $1,837, far below the $15,000 installation cost, and it was statistically insignificant. This explains why OLSRR dropped the variable in part (a) its incremental explanatory power was negligible once other features like square footage, quality, and neighborhood were included.
+CART: the decision tree never split on CentralAir, and the average predicted uplift was essentially zero, with the variable absent from the top importance rankings. This indicates that the tree also found no meaningful contribution of central air to sale price beyond other features.
+Recommendation: Based on both models, I would advise my friend not to install central air solely for resale value, as the expected increase in sale price is much less than the $15,000 cost.
+
+
+> (D)
+
+```{r}
+set.seed(15072)
+cp_grid <- data.frame(cp = c(5e-6, 5e-5, 5e-4, 5e-3, 5e-2))
+ctrl <- trainControl(method = "cv", number = 10)
+
+cart_cv <- train(
+  SalePrice ~ ., data = df_train,
+  method = "rpart",
+  trControl = ctrl,
+  tuneGrid  = cp_grid,
+  metric    = "RMSE"
+)
+
+best_cp <- cart_cv$bestTune$cp
+cat(sprintf("\n(d) Selected cp by 10-fold CV: %.6g\n", best_cp))
+
+# Final pruned CART with best cp
+cart_final <- rpart(SalePrice ~ ., data = df_train, method = "anova",
+                    control = rpart.control(cp = best_cp))
+pred_train_cart <- predict(cart_final, newdata = df_train)
+pred_test_cart  <- predict(cart_final,  newdata = df_test)
+
+r2_cart_in  <- R2(df_train$SalePrice, pred_train_cart)
+r2_cart_out <- R2(df_test$SalePrice,  pred_test_cart)
+
+cat(sprintf("(d) CART (cp=%.6g): R^2_in = %.4f | R^2_out = %.4f\n", best_cp, r2_cart_in, r2_cart_out))
+
+```
+
+
