@@ -1,0 +1,269 @@
+---
+title: "Problem 2"
+date: "2025-09-24"
+output:
+  pdf_document: default
+  html_document: default
+header-includes:
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{graphicx}
+  \usepackage[margin=1in]{geometry}
+  \usepackage{amsmath}
+  \allowdisplaybreaks
+  \DeclareUnicodeCharacter{2265}{\ensuremath{\geq}}
+  \DeclareUnicodeCharacter{2264}{\ensuremath{\leq}}
+  \DeclareUnicodeCharacter{2248}{\ensuremath{\approx}}
+---
+
+# Problem 2:
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(reshape2)
+library(rpart)
+library(rpart.plot)
+```
+
+```{r include=TRUE}
+# NOTE: Data files must be in a 'Data' subdirectory relative to this R Markdown file
+# Expected structure:
+#   - prob4.Rmd
+#   - Data/
+#     |- laptop_train.csv
+#     |- laptop_test.csv
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+
+# Read CSV files using relative paths
+df_orig <- read_csv("insurance_charges.csv")
+```
+
+## Question (a)
+
+```{r}
+head(df_orig)
+```
+
+```{r}
+# We want to know the dimensions of our dataset. 
+dim(df_orig) # there are 9 features and 665 observations
+```
+
+```{r}
+str(df_orig) # structure (variable types, first few entries)
+summary(df_orig) # summary statistics by column
+```
+
+```{r}
+# Split the data into training and test (70% train, 30% test)
+set.seed(15072)
+idx <- createDataPartition(df_orig$charges, p = 0.7, list = FALSE)
+df_train <- df_orig[idx, ]
+df_test  <- df_orig[-idx, ]
+
+# Check the dimensions of the training and test sets
+dim(df_train)
+dim(df_test)
+
+# Use glimpse to get a quick overview of both datasets
+glimpse(df_train)
+glimpse(df_test)
+```
+
+## Question (b)
+
+```{r out.width="0.8\\linewidth", fig.align='center'}
+# Fit a decision tree model with no depth greater than 4
+tree_model <- rpart(charges ~ ., data = df_train, control = rpart.control(maxdepth = 4))
+
+
+# Plot the decision tree
+rpart.plot(tree_model, type = 2, extra = 101, under = TRUE,
+           main = "Decision Tree (max depth = 4)")
+
+# Summary of the model
+summary(tree_model)
+```
+
+```{r}
+# Predictions on training and test sets
+test_pred <- predict(tree_model, newdata = df_test)
+
+# Calculate R-squared for training and test sets
+y_true <- df_test$charges
+sse <- sum((y_true - test_pred)^2)
+sst <- sum((y_true - mean(y_true))^2)
+R2_basetree <- 1 - sse/sst
+
+print(paste("R-squared on test set:", round(R2_basetree, 4)))
+```
+
+## Question (c)
+
+### Residuals
+
+The residuals are the differences between the actual charges in the test dataset and the predicted charges from the basetree model:
+
+$$
+\text{residual}_i = y_i - \hat{y}_i
+$$
+
+where\
+- $y_i$ = actual charge for observation $i$ (from the test dataset),\
+- $\hat{y}_i$ = predicted charge for observation $i$ (from the basetree).
+
+```{r}
+# Calculate residuals on the test set
+residuals <- df_test$charges - test_pred
+
+# Summarize the residuals
+residual_summary <- summary(residuals)
+print(residual_summary)
+```
+
+```{r}
+# Plot a histogram of the residuals
+hist(residuals, breaks = 40, main = "Histogram of Residuals (Test Set)", 
+     xlab = "Residuals", col = "skyblue", border = "white")
+grid()
+```
+
+## Question (d)
+
+1.  First we take a random sample with replacement of size 50 from the training set.
+
+```{r}
+# Take random sample with replacement of size 50 from the training set
+df_sample <- df_train[sample(nrow(df_train), 50, replace = TRUE), ]
+
+# Check the dimensions of the sample
+dim(df_sample)
+```
+
+2.  Next, we fit a decision tree model to this sample, again with max depth 4.
+
+```{r out.width="0.8\\linewidth", fig.align='center'}
+# Fit a decision tree model to the sample
+tree_model_sample <- rpart(charges ~ ., data = df_sample, 
+                            control = rpart.control(maxdepth = 4))
+
+# Plot the decision tree
+rpart.plot(tree_model_sample, type = 2, extra = 101, under = TRUE,
+           main = "Decision Tree on Sample (max depth = 4)")
+
+# Summary of the model
+summary(tree_model_sample)
+```
+
+3.  Finally, we compute the R-squared on the test set using this new model.
+
+```{r}
+# Predictions on test set using the model fitted to the sample
+test_pred_sample <- predict(tree_model_sample, newdata = df_test)
+
+# Calculate R-squared for test set using the sample model
+y_true <- df_test$charges
+sse_sample <- sum((y_true - test_pred_sample)^2)
+sst <- sum((y_true - mean(y_true))^2)
+R2_sample <- 1 - sse_sample/sst
+print(paste("R-squared on test set (sample model):", round(R2_sample, 4)))
+```
+
+## Question (e)
+
+```{r}
+# Repeat the sampling, training, and R2 calculation 30 times
+R2_samples <- numeric(30)
+wise_tree_models <- vector("list", 30) # Save each tree for use in (f)
+
+for (i in 1:30) {
+  # Sample with replacement
+  df_sample <- df_train[sample(nrow(df_train), 50, replace = TRUE), ]
+  # Fit tree
+  tree_model_sample <- rpart(charges ~ ., data = df_sample, 
+                              control = rpart.control(maxdepth = 4))
+  # Store the model
+  wise_tree_models[[i]] <- tree_model_sample
+  # Predict on test set
+  test_pred_sample <- predict(tree_model_sample, newdata = df_test)
+  # Compute R2
+  y_true <- df_test$charges
+  sse_sample <- sum((y_true - test_pred_sample)^2)
+  sst <- sum((y_true - mean(y_true))^2)
+  R2_samples[i] <- 1 - sse_sample/sst
+}
+
+# Print all 30 R2 values, one per line, with index
+for (i in 1:30) {
+  cat(sprintf("Tree %2d: R-squared on test set = %.4f\n", i, R2_samples[i]))
+}
+
+# Print basetree R2 for comparison
+cat(sprintf("\nBasetree: R-squared on test set = %.4f\n", R2_basetree))
+
+# Plot histogram of the 30 R2 values
+hist(R2_samples, breaks = 10, main = "Histogram of R2 on Test Set (30 Sample Trees)",
+     xlab = "R-squared", col = "orange", border = "white")
+abline(v = R2_basetree, col = "blue", lwd = 2, lty = 2)
+legend("topright", legend = "Base Tree R2", col = "blue", lwd = 2, lty = 2)
+grid()
+```
+
+### Results
+
+Across the 30 bootstrapped trees (each trained on a random sample of 50 points with replacement, max depth = 4), the test-set $R^2$ values ranged from about -0.38 to +0.02, with most values negative. This means the bootstrapped trees generally performed worse than predicting the mean of the response. In contrast, the basetree (trained on the full training data with the same depth limit) achieved a small but positive $R^2$ of 0.0103, indicating that access to the full dataset led to slightly better generalization. A histogram of the 30 values would show them tightly clustered around negative performance, while the basetree stands just above zero.
+
+The poor results arise mainly from two factors.
+
+1.  First, using only 50 observations in each bootstrap sample provides too little information, producing highly variable and weak models. Because sampling is done with replacement, some observations appear multiple times while others are skipped, reducing even further the variety of data the model sees.
+
+2.  Second, limiting tree depth to 4 constrains model complexity, so the trees cannot capture important structure in the data.
+
+## Question (f)
+
+Now we are going to create `WiseTree`, an ensemble of 30 trees, each trained on a different bootstrap sample of size 50 (with replacement) from the training set, and each with max depth 4. In this ensemble, predictions are made by averaging the predictions of all 30 trees.
+
+```{r out.width="0.8\\linewidth", fig.align='center'}
+# Use the 30 pretrained trees from wise_tree_models
+
+# Make predictions by averaging the predictions of all trees (WiseTree ensemble)
+wise_tree_pred <- rowMeans(sapply(wise_tree_models, function(model) 
+                                    predict(model, newdata = df_test)))
+
+# Calculate residuals for WiseTree
+wise_tree_residuals <- df_test$charges - wise_tree_pred
+
+# Summarize the residuals
+wise_tree_residuals_summary <- summary(wise_tree_residuals)
+print(wise_tree_residuals_summary)
+```
+
+```{r}
+# Plot histogram of the residuals
+hist(wise_tree_residuals, breaks = 40, main = "Histogram of WiseTree Residuals (Test Set)",
+     xlab = "Residuals", col = "lightgreen", border = "white")
+grid()
+```
+
+## Question (g)
+
+```{r}
+# Calculate R-squared for WiseTree on the test set
+y_true <- df_test$charges
+sse_wisetree <- sum((y_true - wise_tree_pred)^2)
+sst <- sum((y_true - mean(y_true))^2)
+R2_wisetree <- 1 - sse_wisetree/sst
+cat(sprintf("WiseTree: R-squared on test set = %.4f\n", R2_wisetree))
+
+# Compare with basetree R2
+cat(sprintf("Basetree: R-squared on test set = %.4f\n", R2_basetree))
+```
+
+WiseTree outperforms the basetree because it averages predictions from 30 bootstrapped trees, giving it more stability and better generalization. Bootstrapping samples the training set with replacement, so each tree sees a slightly different dataset, introducing diversity among the models. Averaging across these diverse but shallow trees reduces variance, making WiseTree more reliable than a single tree trained on the full dataset.
