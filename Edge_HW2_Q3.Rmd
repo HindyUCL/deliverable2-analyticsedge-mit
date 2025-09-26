@@ -105,24 +105,19 @@ print(churn_rate)
 ## Question (b)
 
 ```{r}
-# Split data into training (70%) and test (30%) sets
-set.seed(15072) # for reproducibility
+set.seed(15072)
+# creating a binary dependent variable for churn (0 = no, 1 = churn)
+df_orig$Churn <- as.factor(df_orig$Churn)
 
-train_index <- createDataPartition(df_orig$Churn, p = 0.7, list = FALSE)
-df_train <- df_orig[train_index, ]
-df_test  <- df_orig[-train_index, ]
+# training (70%) and test (30%) partition
+smp_size <- floor(0.70 * nrow(df_orig))
+train_ind <- sample(seq_len(nrow(df_orig)), size = smp_size, replace = FALSE)
+df_train <- df_orig[train_ind, ]
+df_test <- df_orig[-train_ind, ]
 
-# Check dimensions of training and test sets
-dim(df_train) # training set dimensions
-dim(df_test)  # test set dimensions
-
-# Check churn distribution in training and test sets
-table(df_train$Churn)
-table(df_test$Churn)
-
-# Proportion of churn in training and test sets
-prop.table(table(df_train$Churn))
-prop.table(table(df_test$Churn))
+#  exclude payment method from predictors in model
+model <- glm(Churn ~ . - PaymentMethod, data = df_train, family = "binomial")
+summary(model)
 ```
 
 ```{r}
