@@ -30,6 +30,7 @@ library(rpart.plot)
 df <- read_csv("./ames.csv")
 head(df)
 ```
+
 ```{r}
 # Split the data into test and train (70% training, 30% testing)
 trainIndex <- createDataPartition(df$SalePrice, p = 0.7, list = FALSE)
@@ -41,7 +42,7 @@ cat(dim(df_train), "\n")
 cat(dim(df_test))
 ```
 
-## a) 
+## a)
 
 ```{r, warning=FALSE, message=FALSE}
 # initial linear model
@@ -54,6 +55,7 @@ mod_linear_olsrr <- ols_step_backward_p(mod_linear_initial, p_val = 0.05, progre
 mod_linear_final <- mod_linear_olsrr$model
 summary(mod_linear_final)
 ```
+
 ```{r, warning=FALSE, message=FALSE}
 
 R2 <- function(model, train, test) {
@@ -78,9 +80,10 @@ R2 <- function(model, train, test) {
 
 R2(mod_linear_final, df_train, df_test)
 ```
-Out-of-Sample R-squared (0.795057) < In-Samlpe R-squared (0.9166433), which is expected.
 
-## b) 
+Out-of-Sample R-squared (0.795057) \< In-Samlpe R-squared (0.9166433), which is expected.
+
+## b)
 
 ```{r}
 # Train a CART model with default parameters
@@ -94,9 +97,11 @@ print(sort(mod_cart$variable.importance, decreasing = TRUE)[1:10])
 
 R2(mod_cart, df_train, df_test)
 ```
-Out-of-Sample R-squared (0.7197951) < In-Samlpe R-squared (0.7730154), which is expected. However, the difference between the two is smaller than what it was for our mod_linear_olsrr model, which exhibited higher Out-of-Sample R-squared (0.795057).
 
-Let us visualize the variables' importance by decreasing order of importance from the CART model we trained. 
+Out-of-Sample R-squared (0.7197951) \< In-Samlpe R-squared (0.7730154), which is expected. However, the difference between the two is smaller than what it was for our mod_linear_olsrr model, which exhibited higher Out-of-Sample R-squared (0.795057).
+
+Let us visualize the variables' importance by decreasing order of importance from the CART model we trained.
+
 ```{r}
 # Convert importance to data frame
 var_imp <- data.frame(
@@ -119,16 +124,13 @@ ggplot(var_imp, aes(x = reorder(Variable, Importance), y = Importance)) +
   ) +
   theme_minimal()
 ```
-As we can see, the variables that influence the most variation in SalePrice are ExternalQual, Neighborhood, YearBuilt, KitchenQual, Garage, and YrBlt. 
 
-## c) Central Air Installation Decision
+As we can see, the variables that influence the most variation in SalePrice are ExternalQual, Neighborhood, YearBuilt, KitchenQual, Garage, and YrBlt.
 
-Let's test the marginal effect of CentralAir using both models.
-We'll take an average counterfactual approach:
-- Pick homes in the test set that currently have no A/C
-- Predict their value as-is
-- Predict again after switching CentralAir = "Y"
-- Compare average lift
+## c) 
+
+Let's test the marginal effect of CentralAir using both models. We'll take an average counterfactual approach: - Pick homes in the test set that currently have no A/C - Predict their value as-is - Predict again after switching CentralAir = "Y" - Compare average lift
+
 ```{r}
 # Ensure factor consistency
 df_test$CentralAir <- factor(df_test$CentralAir, levels = c("N","Y"))
@@ -162,9 +164,11 @@ if (lift_cart > 15000) {
   cat("CART suggests: DO NOT install A/C\n")
 }
 ```
-Results from both the linear regression and CART models suggest that adding central air conditioning would not generate a significant increase in the property’s sale price. Given that the estimated value uplift is essentially zero—well below the installation cost of $15,000—we would advise against making this investment. This outcome also highlights that, in the context of our models, CentralAir is not a strong determinant of price once other influential features such as neighborhood, exterior quality, and year built are taken into account. Of course, she can instead over some of these important features, such as exterior quality by performing some rennovations, for instance, which we estimate will increase the SalePrice of her house. Our models have hence allowed us to advise her on how to invest these $15,000 better to maximize SalesPrice.
 
-## d) 
+Results from both the linear regression and CART models suggest that adding central air conditioning would not generate a significant increase in the property’s sale price. Given that the estimated value uplift is essentially zero—well below the installation cost of \$15,000—we would advise against making this investment. This outcome also highlights that, in the context of our models, CentralAir is not a strong determinant of price once other influential features such as neighborhood, exterior quality, and year built are taken into account. Of course, she can instead over some of these important features, such as exterior quality by performing some rennovations, for instance, which we estimate will increase the SalePrice of her house. Our models have hence allowed us to advise her on how to invest these \$15,000 better to maximize SalesPrice.
+
+## d)
+
 ```{r}
 # Candidate cp values
 cp_values <- c(5e-6, 5e-5, 5e-4, 5e-3, 5e-2)
@@ -193,9 +197,11 @@ mod_cart_final <- rpart(SalePrice ~ ., data = df_train,
 # Report in-sample and out-of-sample R²
 R2(mod_cart_final, df_train, df_test)
 ```
-As we can see, selecting the best cp hyper paramter from the set of five explored through grid search significantly increases our Out-of-sample R² to 0.7701036 instead 0.7197951, gaining more than 5% points with the tuning. 
 
-## e) 
+As we can see, selecting the best cp hyper paramter from the set of five explored through grid search significantly increases our Out-of-sample R² to 0.7701036 instead 0.7197951, gaining more than 5% points with the tuning.
+
+## e)
+
 ```{r}
 # Tune mtry using 10-fold CV
 tune_grid <- expand.grid(mtry = 1:(ncol(df_train) - 1))
@@ -231,7 +237,9 @@ R2(mod_rf, df_train, df_test)
 ```
 
 ## f)
+
 Let us calculate the number of weights to nuance our model choice.
+
 ```{r}
 n_coef_lm <- length(coef(mod_linear_final)[!is.na(coef(mod_linear_final))])
 
@@ -281,24 +289,8 @@ knitr::kable(comparison, digits = 4,
              caption = "Comparison of models: hyperparameters and performance")
 ```
 
-Across all models, Random Forest with tuned hyperparameters (mtry = 50, ntree = 80, nodesize = 25) achieved the strongest predictive performance, with an in-sample R² of 0.9554 and an out-of-sample R² of 0.8610. This model used on average ~333.9 parameters per tree, resulting in about 26,710 total parameters across its 80 trees. By comparison, the stepwise linear regression model relied on just 115 coefficients, while the tuned CART tree used 147 parameters (73 internal splits + 74 leaves). Random Forest therefore operated with more than 230× as many weights as linear regression, and nearly 180× as many as CART, which explains its ability to capture highly nonlinear interactions.
+Across all models, Random Forest with tuned hyperparameters (mtry = 50, ntree = 80, nodesize = 25) achieved the strongest predictive performance, with an in-sample R² of 0.9554 and an out-of-sample R² of 0.8610. This model used on average \~333.9 parameters per tree, resulting in about 26,710 total parameters across its 80 trees. By comparison, the stepwise linear regression model relied on just 115 coefficients, while the tuned CART tree used 147 parameters (73 internal splits + 74 leaves). Random Forest therefore operated with more than 230× as many weights as linear regression, and nearly 180× as many as CART, which explains its ability to capture highly nonlinear interactions.
 
 The linear regression model nevertheless achieved competitive results (R²_out = 0.7951) while being two orders of magnitude more compact, and it offers interpretability via direct coefficients (e.g., the marginal effect of Central A/C). CART, with 147 parameters, strikes a middle ground but still lags behind both regression and Random Forest in accuracy (R²_out = 0.7198), suggesting that a single tree remains too simple for this dataset.
 
 These parameter counts underscore the trade-off between accuracy and complexity: Random Forest achieves the best generalisation but at the cost of interpretability and computational overhead. Linear regression sacrifices some predictive power but provides direct, transparent insights, while CART offers an interpretable yet limited model. In practice, maintaining a portfolio of models is probably the best option: Random Forest when high predictive accuracy is required, and simpler models like regression for daily use cases where interpretability and efficiency matter most.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
