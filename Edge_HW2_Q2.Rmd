@@ -64,9 +64,11 @@ summary(df_orig) # summary statistics by column
 ```{r}
 # Split the data into training and test (70% train, 30% test)
 set.seed(15072)
-idx <- createDataPartition(df_orig$charges, p = 0.7, list = FALSE)
-df_train <- df_orig[idx, ]
-df_test  <- df_orig[-idx, ]
+# training (70%) and test (30%) partition
+smp_size <- floor(0.70 * nrow(df_orig))
+train_ind <- sample(seq_len(nrow(df_orig)), size = smp_size, replace = FALSE)
+df_train <- df_orig[train_ind, ]
+df_test <- df_orig[-train_ind, ]
 
 # Check the dimensions of the training and test sets
 dim(df_train)
@@ -218,7 +220,7 @@ grid()
 
 ### Results
 
-Across the 30 bootstrapped trees (each trained on a random sample of 50 points with replacement, max depth = 4), the test-set $R^2$ values ranged from about -0.38 to +0.02, with most values negative. This means the bootstrapped trees generally performed worse than predicting the mean of the response. In contrast, the basetree (trained on the full training data with the same depth limit) achieved a small but positive $R^2$ of 0.0103, indicating that access to the full dataset led to slightly better generalization. A histogram of the 30 values would show them tightly clustered around negative performance, while the basetree stands just above zero.
+Across the 30 bootstrapped trees (each trained on a random sample of 50 points with replacement, max depth = 4), the test-set $R^2$ values ranged from about -0.39z to +0.07, with most values negative. This means the bootstrapped trees generally performed worse than predicting the mean of the response. In contrast, the basetree (trained on the full training data with the same depth limit) achieved a small but positive $R^2$ of 0.0557, indicating that access to the full dataset led to slightly better generalization. A histogram of the 30 values would show them tightly clustered around negative performance, while the basetree stands just above zero.
 
 The poor results arise mainly from two factors.
 
