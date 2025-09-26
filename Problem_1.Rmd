@@ -54,13 +54,12 @@ corr_mat |>
   labs(title = "Correlation heatmap", x = NULL, y = NULL) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
-From the EDA, we can see that charges are right-skewed with a few high-cost outliers, while age is fairly uniform across the dataset. The correlation heatmap shows that BMI, f_bmi, and cardiovascular_care_cost are highly correlated with each other, but only moderately related to charges, suggesting potential multicollinearity among the BMI-related features.
-
+From the EDA, we can see that charges are right-skewed with a few high-cost outliers, while age is fairly uniform across the dataset. The correlation heatmap shows that BMI and f_bmi are almost perfectly correlated (≈0.98), while their relationship to charges is only moderate. Because CART models split on orderings, monotone transforms like f_bmi usually yield nearly identical trees to BMI.
 
 ## a) 
 ```{r}
 # Decision tree predicting charges based on bmi and age. 
-model1 <- rpart(charges ~ age, bmi, data = df)
+model1 <- rpart(charges ~ age + bmi, data = df)
 
 # Plots the decision tree
 rpart.plot(model1)
@@ -76,13 +75,13 @@ rsq <- 1 - rss/tss
 
 cat("The Training R-squared is:", round(rsq, 3), "\n")
 ```
-The R-squared obtained is equal to 8.8%, which is low and shows that the model has not learnt deeply the relationship we want to model. 
+The training R² is ≈11.2%, and the cross-validated relative error from printcp is ~0.92, meaning the tree only modestly improves over predicting the mean. Age contributes most of the predictive power, with importance ≈68 compared to 32 for BMI.
 
 ## b) 
 
 ```{r}
 # Decision tree predicting charges based on f_bmi and age. 
-model2 <- rpart(charges ~ age, f_bmi, data = df)
+model2 <- rpart(charges ~ age + f_bmi, data = df)
 
 # Plots the decision tree
 rpart.plot(model2)
@@ -97,13 +96,12 @@ tss <- sum((df$charges - mean(df$charges))^2)   # total sum of squares
 rsq <- 1 - rss/tss
 
 cat("The Training R-squared is:", round(rsq, 3), "\n")
-
 ```
-We get a R-squared value fairly small (9%), which testifies that the model has not well learnt the training data and that perhaps, we need a more complex model.
+The training R² is again ≈11.2%. The tree structure and splits are almost identical to model (a), which is expected since f_bmi is a monotone transform of BMI. Age still dominates in variable importance (≈68 vs 32)
 
 ## c)
 
-From the trees' plots performed using rpart, we can see that the structures are exactly the same and the cutoffs are too (age < 43, and age < 59 were the variables chosen). Addtionally, the R-squared obtained from model1 and model2 are very close (9% and 8.8%, respectively). This hints on the high correlation between f_bmi and bmi. As we can see from the correlation heatmap of our EDA, the f_bmi and bmi features are almost perfectly correlated (Dark blue) with a coefficient of 0.98! On top of this, f_bmi as a function of bmi shows that f_bmi is a nonlinear transformation of bmi, likely a scaled or polynomial/log-type function that compresses larger BMI values, since the relationship is strongly positive but clearly curved rather than linear.
+Both trees have nearly identical splits (root split on age < 42.5, secondary splits on BMI ≈ 4.36 or f_bmi ≈ 0.64). Their training R² values are essentially the same (≈11.2%). This outcome is expected because f_bmi is a near-monotone transform of BMI (correlation ≈0.98), which preserves ordering. CART models base splits on order thresholds, so any monotone transform will yield similar partitions and performance.
 
 ```{r}
 # Plot f_bmi as a function of bmi
@@ -115,6 +113,8 @@ plot(df$bmi, df$f_bmi,
 abline(lm(f_bmi ~ bmi, data = df), col = "red", lwd = 2)
 ```
 ## d) 
+
+
 
 ## e) 
 
@@ -168,5 +168,4 @@ for (i in seq_len(nrow(res))) {
 ```
 When cp = 0, the tree grows very deep (12 levels, 111 leaves), leading to extremely high training R² (≈0.95) but clear overfitting, as seen in the highly complex structure. Increasing cp prunes the tree aggressively: at cp = 0.02, the tree shrinks to just 6 leaves and R² drops to ≈0.89. For cp = 0.04–0.08, the tree stabilizes with 4 leaves and depth 2, achieving R² around 0.83, which indicates a simpler but still reasonable fit. Finally, at cp = 0.10, the tree becomes even smaller (3 leaves, depth 2) and the R² falls further to ≈0.73, showing underfitting.
 
-In summary, smaller cp values allow more complex trees with higher apparent training accuracy but risk overfitting, while larger cp values lead to simpler trees with reduced variance but higher bias. This trade-off highlights the importance of tuning cp to balance model complexity and predictive power, based on needs for expanability (e.g. Shallow tree is preferred as it can be visualized and human-parsed quickly) or performance, for instance. 
-
+In summary, smaller cp values allow deeper trees with very high training R² (≈0.95) but clear overfitting, while larger cp values prune the tree aggressively, reducing variance but increasing bias. The appropriate cp should be chosen by cross-validated error using the 1-SE rule. In this case, cp around 0.04–0.06 yields a shallow tree (4 leaves, depth 2) with R² ≈0.83 — a balance between interpretability and reasonable fit.
