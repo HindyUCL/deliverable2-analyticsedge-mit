@@ -40,24 +40,69 @@ library(reshape2)
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 
 # Read CSV files using relative paths
-df_orig <- read_csv("customerchurn.csv")
+df_orig <- read_csv("../customerchurn.csv")
 ```
 
 ## Question (a)
 
 ```{r}
-head(df_orig)
-```
-
-```{r}
-# We want to know the dimensions of our dataset. 
-dim(df_orig) # there are 9 features and 665 observations
-```
-
-```{r}
 str(df_orig) # structure (variable types, first few entries)
 summary(df_orig) # summary statistics by column
 ```
+
+```{r fig.height=10, fig.width=8}
+# Set up 3x2 grid layout
+par(mfrow = c(3, 2))
+
+barchartvector = c("Churn", "SeniorCitizen", 
+                    "PaymentMethod", "InternetService", "Contract")
+for (col_name in barchartvector) {
+  counts <- table(df_orig[[col_name]])
+  
+  # Create the barplot and store the bar positions
+  bar_positions <- barplot(counts, 
+          main = paste("Bar Chart for", col_name), 
+          xlab = col_name, 
+          ylab = "Frequency",
+          col = "skyblue",
+          ylim = c(0, max(counts) * 1.1))  # Add some space at top
+  
+  # Add grid
+  grid(nx = NULL, ny = NULL, col = "gray", lty = "dotted", lwd = 1)
+  
+  # Redraw the bars on top of the grid
+  barplot(counts, 
+          col = "skyblue", 
+          add = TRUE)
+  
+  # Add text labels inside each bar
+  text(x = bar_positions, 
+       y = counts / 2,  # Position at middle of each bar
+       labels = counts, 
+       cex = 0.8,  # Text size
+       col = "black")  # Text color for visibility
+}
+```
+
+```{r }
+# Set up 1x2 grid layout for histograms
+par(mfrow = c(1, 2))
+
+histvector = c("MonthlyCharges", "tenure")
+for (col_name in histvector) {
+  # Use the actual column values, not table counts
+  hist(df_orig[[col_name]], 
+          main = paste("Histogram for", col_name), 
+          xlab = col_name, 
+          ylab = "Frequency",
+          col = "skyblue", breaks = "FD")
+}
+
+# Reset to default single plot layout
+par(mfrow = c(1, 1))
+```
+
+From this output, we have a few key takeaways: the churn percentage is 26.5785% and the non churn percentage is 73.4215%, meaning we have approx 3x more observations of non churners than churners. We also realize that our data set is also unbalanced in terms of age demographics, having only 16.24% senior citizens. For the payment methods, users have the choice between 4 different payment methods including electronic check which is the most popular choice, and bank transfer/credit card/mailed check which all have pretty similar utilization. To provide more color on internet service, we see that the most popular service is fiber optic followed by DSL, but many people report not having a service. Moreover, the majority of people pay for these services month to month rather than being locked in for 1 or 2 years. With these services, we see that users pay on average of \$64.80 per month, with a high of \$118.75 and a low of \$18.25. Charges are skewed right as is the histogram of tenure.
 
 ```{r}
 # Use table() function to see the distribution of the target variable
@@ -114,10 +159,6 @@ smp_size <- floor(0.70 * nrow(df_orig))
 train_ind <- sample(seq_len(nrow(df_orig)), size = smp_size, replace = FALSE)
 df_train <- df_orig[train_ind, ]
 df_test <- df_orig[-train_ind, ]
-
-#  exclude payment method from predictors in model
-model <- glm(Churn ~ . - PaymentMethod, data = df_train, family = "binomial")
-summary(model)
 ```
 
 ```{r}
@@ -135,13 +176,13 @@ cat(sprintf("Coefficient for SeniorCitizen: %.4f\n", senior_coef))
 
 ### Interpretation:
 
-In the logistic regression model, the `SeniorCitizen` coefficient represents the change in the log-odds of churn for senior citizens compared to non-senior citizens, holding all other variables constant. Since the coefficient is positive (0.4615), it means that being a senior citizen increases the likelihood of customer churn. Specifically, the odds of churn for senior citizens are exp(0.4615) ≈ 1.59 times the odds for non-senior citizens, all else being equal. In other words, senior citizens are about 59% more likely to churn than non-senior citizens, controlling for other factors in the model.
+In the logistic regression model, the `SeniorCitizen` coefficient represents the change in the log-odds of churn for senior citizens compared to non-senior citizens, holding all other variables constant. Since the coefficient is positive (0.4601), it means that being a senior citizen increases the likelihood of customer churn. Specifically, the odds of churn for senior citizens are exp(0.4601) ≈ 1.58 times the odds for non-senior citizens, all else being the same. In other words, senior citizens are about 58% more likely to churn than non-senior citizens, holding all other factors constant.
 
 ## Question (c)
 
 So essentially I need to find the 5th customer from the initial dataset and predict the probability of churn for that customer using the fitted logistic regression model.
 
-1.  Get the 5th customer from the original dataset
+1.  Get the 5th customer from the original dataset, keeping only the features used to fit the model
 
 ```{r}
 customer_5 <- df_orig[5, ]
@@ -163,7 +204,8 @@ cat(sprintf("Predicted probability of churn for customer 5: %.4f\n", churn_prob)
 # Predict probabilities on test set
 pred_probs <- predict(mod_logit, newdata = df_test, type = "response")
 
-# Classify based on threshold of 0.3 (any probability higher than 30% will be considered as churn)
+# Classify based on threshold of 0.3 (any probability higher 
+# than 30% will be considered as churn)
 pred_classes <- ifelse(pred_probs > 0.3, 1, 0)
 
 # Confusion matrix
@@ -376,6 +418,6 @@ ggplot(profit_df, aes(x = Threshold, y = Profit)) +
   )
 ```
 
-The results confirm this intuition. At very low thresholds, the model predicts nearly everyone as a churner, leading to heavy losses from excessive false positives. As the threshold increases, profits rise steadily, reaching a maximum of \$3,230,000 at a threshold of 0.368. At this point, the model correctly identifies 373 churners, with 330 false positives and 156 false negatives. Beyond this threshold, profits start to decline, as the number of missed churners grows and outweighs the savings from fewer false positives.
+The results confirm this intuition. At very low thresholds, the model predicts nearly everyone as a churner, leading to heavy losses from excessive false positives. As the threshold increases, profits rise steadily, reaching a maximum of \$3,237,000 at a threshold of 0.368. At this point, the model correctly identifies 373 churners, with 331 false positives and 155 false negatives. Beyond this threshold, profits start to decline, as the number of missed churners grows and outweighs the savings from fewer false positives.
 
 In the plot, I highlighted this optimal threshold with red dotted lines. It clearly represents the point where the trade-off between catching churners and avoiding unnecessary retention costs delivers the highest return. From a business standpoint, this suggests adopting a moderately low threshold that focuses on reducing costly missed churners while still managing retention expenses.
