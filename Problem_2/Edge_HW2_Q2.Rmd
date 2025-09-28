@@ -42,19 +42,10 @@ library(rpart.plot)
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 
 # Read CSV files using relative paths
-df_orig <- read_csv("insurance_charges.csv")
+df_orig <- read_csv("../insurance_charges.csv")
 ```
 
 ## Question (a)
-
-```{r}
-head(df_orig)
-```
-
-```{r}
-# We want to know the dimensions of our dataset. 
-dim(df_orig) # there are 9 features and 665 observations
-```
 
 ```{r}
 str(df_orig) # structure (variable types, first few entries)
@@ -130,6 +121,9 @@ residual_summary <- summary(residuals)
 print(residual_summary)
 ```
 
+We can see that the values of the residuals are quite spread out, indicating that the model has difficulty accurately predicting insurance charges for many individuals.
+This is also reflected in the R-squared value, which is very low (around 0.0557), indicating that the model explains only a small portion of the variance in the insurance charges.
+
 ```{r}
 # Plot a histogram of the residuals
 hist(residuals, breaks = 40, main = "Histogram of Residuals (Test Set)", 
@@ -178,6 +172,10 @@ R2_sample <- 1 - sse_sample/sst
 print(paste("R-squared on test set (sample model):", round(R2_sample, 4)))
 ```
 
+Having a negative R-squared indicates that the model is performing worse than simply predicting the mean of the response variable. 
+This poor performance indicates that this particular tree, trained on a small bootstrap sample of 50 observations, 
+is not capturing the underlying patterns in the data effectively.
+
 ## Question (e)
 
 ```{r}
@@ -220,7 +218,11 @@ grid()
 
 ### Results
 
-Across the 30 bootstrapped trees (each trained on a random sample of 50 points with replacement, max depth = 4), the test-set $R^2$ values ranged from about -0.39z to +0.07, with most values negative. This means the bootstrapped trees generally performed worse than predicting the mean of the response. In contrast, the basetree (trained on the full training data with the same depth limit) achieved a small but positive $R^2$ of 0.0557, indicating that access to the full dataset led to slightly better generalization. A histogram of the 30 values would show them tightly clustered around negative performance, while the basetree stands just above zero.
+Across the 30 bootstrapped trees (each trained on a random sample of 50 points with replacement, max depth = 4), the test-set $R^2$ 
+values ranged from about -0.39 to +0.07, with most values negative. This means the bootstrapped trees generally performed worse 
+than predicting the mean of the response. In contrast, the basetree (trained on the full training data with the same depth limit) 
+achieved a small but positive $R^2$ of 0.0557, indicating that access to the full dataset led to slightly better generalization. 
+A histogram of the 30 values would show them tightly clustered around negative performance, while the basetree stands just above zero.
 
 The poor results arise mainly from two factors.
 
@@ -253,6 +255,11 @@ hist(wise_tree_residuals, breaks = 40, main = "Histogram of WiseTree Residuals (
      xlab = "Residuals", col = "lightgreen", border = "white")
 grid()
 ```
+
+Here we also see that the residuals are quite spread out, indicating that the ensemble model still has difficulty accurately 
+predicting insurance charges for many individuals. However, the spread of the residuals appears to be slightly less extreme compared 
+to the single trees (question (c)), suggesting that averaging predictions from multiple trees helps to stabilize the predictions 
+somewhat.
 
 ## Question (g)
 
