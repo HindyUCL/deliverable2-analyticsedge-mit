@@ -1,0 +1,120 @@
+---
+title: "Problem_3 - Riya"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+  html_notebook: default
+header-includes:
+  - \usepackage{fvextra}
+  - \fvset{breaklines=true, breakanywhere=true} % wrap in all FancyVerb blocks
+  - \DefineVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere}
+---
+```{r}
+library(dplyr)
+library(caret)
+library(rpart)  
+library(randomForest)
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(olsrr)
+library(rpart.plot)
+library(gbm)
+library(Metrics)
+library(dendextend)   
+library(ggplot2)      
+library(ggfortify)    
+```
+## a) Cluster the data using hierarchical clustering, using the "Ward D2" measure of cluster dissimilarity. Then, use the cutree function to cut the dendrogram tree to 3 clusters and extract cluster assignments. Report the cluster sizes and comment on the characteristics of each cluster.
+```{r}
+df <- read.csv("autoSurvey2024.csv")
+
+# euclidean distance matrix
+distance_matrix <- dist(df, method = "euclidean")
+
+# hierarchical clustering
+hc_result <- hclust(distance_matrix, method = "ward.D2")
+
+# cut dendrogram to form 3 clusters
+cluster_assignments <- cutree(hc_result, k = 3)
+
+plot(hc_result, labels = FALSE, main = "Hierarchical Clustering (Ward D2)", xlab = "", sub = "")
+cluster_colors <- c("red", "blue", "green")
+rect.hclust(hc_result, k = 3, border = cluster_colors)  # only border is allowed
+
+# add cluster labels to the original data
+df_clustered <- df
+df_clustered$cluster <- cluster_assignments
+
+print(table(df_clustered$cluster))
+print(round(aggregate(. ~ cluster, data = df_clustered, FUN = mean), 2))
+
+# PCA plot for visualization
+df_numeric <- df[sapply(df, is.numeric)]
+df_scaled <- scale(df_numeric)
+autoplot(prcomp(df_scaled), data = df_clustered, colour = 'cluster') +
+  ggtitle("PCA Plot of Clusters") +
+  theme_minimal()
+```
+Through Ward D2 clustering, we found 3 distinct customer segments based on preferences for vehicle features. Cluster1 with 256 customers demonstrates a strong affinity for driving performance (driving_properties = 0.80, power = 0.62) and sportiness (0.80), with moderate interest in handling (0.47) and larger household sizes (0.68). This group likely represents performance-oriented buyers who prioritize dynamic driving and style. Cluster 2 with 228 customers places the highest emphasis on safety (0.71) and reliability (0.76), alongside elevated scores for comfort (0.62) and technology (0.59). These customers appear to favor well-rounded, dependable vehicles, suggesting a more cautious or family-focused profile. Cluster 3 - the largest segment with 309 customers - stands out for its preference for space (0.23), consumption awareness (0.35), and interior features (0.31), with moderate comfort and household size scores. This group likely reflects practical buyers who value spaciousness and efficiency over performance or advanced features. Compared to earlier models, this segmentation offers clearer differentiation between performance-driven, safety-conscious, and space-seeking customer profiles.
+
+## b) Increase the number of clusters to 4 and analyze them. In what ways does the 4-cluster model differ from the 3-cluster model?
+```{r}
+# cut dendrogram to form 4 clusters
+cluster_assignments_4 <- cutree(hc_result, k = 4)
+
+# add cluster labels to the original data
+df_clustered_4 <- df
+df_clustered_4$cluster_4 <- cluster_assignments_4
+
+print(table(df_clustered_4$cluster_4))
+print(round(aggregate(. ~ cluster_4, data = df_clustered_4, FUN = mean), 2))
+
+# plot dendrogram for 4 clusters
+plot(hc_result, labels = FALSE, main = "Hierarchical Clustering (Ward D2, 4 Clusters)", xlab = "", sub = "")
+cluster_colors_4 <- c("red", "blue", "green", "purple") 
+rect.hclust(hc_result, k = 4, border = cluster_colors_4)
+```
+Expanding to a 4 cluster model revealed a more nuanced segmentation of customer preferences. Cluster 1 (256 customers) remains performance-driven, with high scores in driving properties (0.80), power (0.62), and sportiness (0.80), suggesting a style-focused group with larger households. Cluster 2 (187 customers) emphasizes safety (0.67), reliability (0.76), and comfort (0.57), reflecting practical buyers who value dependability and well-rounded features. Cluster 3 (309 customers) leans toward space (0.23), consumption awareness (0.35), and interior features (0.31), indicating a segment focused on efficiency and spaciousness. Cluster 4, though small (41 customers), isolates a premium, tech-savvy group with the highest scores in driving properties (1.00), handling (0.98), power (0.88), and comfort (0.85), along with strong interest in safety (0.88) and technology (0.83). Compared to the three-cluster model, this solution offers clearer separation, especially by splitting the original performance-oriented group into distinct mainstream and premium segments (cluster 2 seems to split into clusters 2 and 4 in this 4-cluster model).
+
+## c) Now cluster the data using the k-means algorithm, using 3 and 4 clusters. Set the seed to 15072 and max.iter to 100, and extract cluster assignments and compare them to those obtained with hierarchical clustering.
+```{r}
+# K-means clustering with 3 clusters
+set.seed(15072)
+kmeans_3 <- kmeans(df, centers = 3, iter.max = 100)
+
+# K-means clustering with 4 clusters
+set.seed(15072)
+kmeans_4 <- kmeans(df, centers = 4, iter.max = 100)
+
+# Attach cluster labels to df
+df$kmeans3 <- factor(kmeans_3$cluster)
+df$kmeans4 <- factor(kmeans_4$cluster)
+
+# Cluster sizes
+cat("K-means (3 clusters):\n")
+print(table(df$kmeans3))
+
+cat("\nK-means (4 clusters):\n")
+print(table(df$kmeans4))
+
+cat("\nHierarchical clustering (3 clusters):\n")
+print(table(df_clustered$cluster))  # assuming df$cluster exists from earlier
+
+cat("\nHierarchical clustering (4 clusters):\n")
+print(table(df_clustered_4$cluster_4))  # assuming df$cluster_4 exists from earlier
+
+# Cross-tab comparisons
+cat("\nCross-tab: Hierarchical vs K-means (3 clusters):\n")
+print(table(Hierarchical = df_clustered$cluster, KMeans3 = df$kmeans3))
+
+cat("\nCross-tab: Hierarchical vs K-means (4 clusters):\n")
+print(table(Hierarchical = df_clustered_4$cluster_4, KMeans4 = df$kmeans4))
+```
+
+To compare clustering methods, we used both hierarchical and k-means clustering on the binary data. The cross-tab results show that hierarchical cluster 1 (256 customers) is spread across all k-means groups in the 3-cluster model, landing in k-means clusters 1 (81), 2 (51), and 3 (124). This means k-means breaks up the largest hierarchical group into smaller subgroups. Hierarchical cluster 2 (228 customers) also splits fairly evenly across k-means clusters, while cluster 3 (309 customers) mostly maps to k-means cluster 3 (134) but still overlaps with the others. In the 4-cluster comparison, hierarchical cluster 1 again spreads across all k-means groups, especially cluster 4 (94), showing that k-means gives more detailed segmentation. The small hierarchical cluster 4 (41 customers) mostly matches k-means cluster 4 (38), which suggests k-means can pick out more specific customer types. Overall, k-means helps broke down our broad groups into finer segments, which would be useful for identifying customer sub types and improving customer targeting.
+
+## d) Based on your responses in parts a, b, and c, in what ways are the clusters similar and different across the two clustering approaches (hierarchical and k-means)?
+Across hierarchical clustering and k-means, several consistent patterns emerge, but the methods also reveal distinct segmentation strategies. Hierarchical clustering groups similar things together one by one after treating them each as individual entities, while k-means tries to find the points most similar to a nearest central point. Both approaches identify a cluster of customers who prioritize comfort, reliability, and safety, as well as a group focused on interior features and space, suggesting agreement on core consumer archetypes. However, hierarchical clustering tends to preserve broader groupings—especially in the 3-cluster model—while k-means more aggressively partitions large clusters into finer subgroups. For example, hierarchical cluster 1, which contains the majority of customers, is split across multiple k-means clusters, indicating that k-means detects latent variation within this dominant segment. In the 4-cluster comparison, k-means isolates a high-performance, tech-savvy group with elevated scores in driving properties, handling, and power—similar to the premium cluster identified in hierarchical clustering. Overall, while both methods capture similar thematic clusters, k-means offers sharper boundaries and more granular segmentation, especially within large, heterogeneous groups. 
